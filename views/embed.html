@@ -482,7 +482,7 @@
                         break;
                     }
                 }
-                subtitlesButton.innerHTML = showing ? "Hide Subtitles" : "Show Subtitles";
+                subtitlesButton.innerHTML = showing ? "Ocultar subtítulos" : "Mostrar subtítulos";
             }
         }
         
@@ -594,10 +594,10 @@
     
     <!-- Main Controls - Primary Actions -->
     <div class="main-controls">
-        <button id="pauseButton" onclick="togglePlayPause()">Pause</button>
-        <button id="muteButton" onclick="toggleMute()">Mute</button>
-        <button onclick="toggleFullscreen()">Fullscreen</button>
-        <button id="subtitlesButton" onclick="toggleSubtitles()">Show Subtitles</button>
+        <button id="pauseButton" onclick="togglePlayPause()">Pausar</button>
+        <button id="muteButton" onclick="toggleMute()">Silenciar</button>
+        <button onclick="toggleFullscreen()">Pantalla completa</button>
+        <button id="subtitlesButton" onclick="toggleSubtitles()">Mostrar subtítulos</button>
  
     </div>
     
@@ -609,17 +609,17 @@
         <button onclick="changeTime(30)">+30s</button>
         <button onclick="changeTime(90)">+90s</button>
         <button onclick="changeTime(120)">+2m</button>
-        <button onclick="changeTime(video.duration-10)">Latest</button>
+        <button onclick="changeTime(video.duration-10)">Más reciente</button>
     </div>
     
     <!-- Secondary Controls -->
     <div class="secondary-controls">
         <div class="control-group playback-speed-group">
-            <label>Playback Speed</label>
+            <label>Velocidad de reproducción</label>
             <input type="number" value="1.0" min="0.1" max="16.0" step="0.1" id="playback_rate" onchange="video.defaultPlaybackRate=video.playbackRate=this.value">
         </div>
         <div class="control-group">
-            <label>Audio Tracks</label>
+            <label>Pistas de audio</label>
             <span id="audioSpan"></span>
         </div>
     </div>
@@ -627,12 +627,12 @@
     <!-- Additional Controls -->
     <div class="secondary-controls">
         <div class="control-group">
-            <label>Video Controls</label>
-            <button onclick="video.controls=!video.controls" class="control-button">Toggle Native Controls</button>
+            <label>Controles de video</label>
+            <button onclick="video.controls=!video.controls" class="control-button">Alternar controles nativos</button>
         </div>
         <div class="control-group">
-            <label>Navigation</label>
-            <button onclick="goBack()" class="control-button">Back</button>
+            <label>Navegación</label>
+            <button onclick="goBack()" class="control-button">Volver</button>
         </div>
     </div>
     
@@ -644,17 +644,17 @@
             // Update button text based on video state
             function updatePauseButton() {
                 if (video.paused) {
-                    pauseButton.innerHTML = "Play";
+                    pauseButton.innerHTML = "Reproducir";
                 } else {
-                    pauseButton.innerHTML = "Pause";
+                    pauseButton.innerHTML = "Pausar";
                 }
             }
             
             function updateMuteButton() {
                 if (video.muted) {
-                    muteButton.innerHTML = "Unmute";
+                    muteButton.innerHTML = "Activar sonido";
                 } else {
-                    muteButton.innerHTML = "Mute";
+                    muteButton.innerHTML = "Silenciar";
                 }
             }
             

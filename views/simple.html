@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{appname}} - Simple View</title>
+    <title>Partidos</title>
     <link rel="icon" href="favicon.svg{{content_protect}}">
     <style type="text/css">
         body {
@@ -138,11 +138,29 @@
             transition: all 0.3s ease;
             border: none;
             cursor: pointer;
+            margin: 4px;
         }
         .watch-btn:hover {
             background: linear-gradient(135deg, #0088ff, #0066cc);
             transform: translateY(-1px);
             box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3);
+        }
+        .watch-btn.primary {
+            background: linear-gradient(135deg, #007acc, #005a9e);
+            border: 2px solid #0088ff;
+            font-weight: 700;
+            padding: 12px 24px;
+        }
+        .watch-btn.secondary {
+            background: linear-gradient(135deg, #444, #555);
+            border: 1px solid #666;
+            font-weight: 500;
+            padding: 10px 20px;
+        }
+        .watch-btn.secondary:hover {
+            background: linear-gradient(135deg, #555, #666);
+            border-color: #777;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
         .no-stream {
             color: #666;
@@ -256,7 +274,7 @@
             if (!gamesContainer) return;
             
             if (gamesData.length === 0) {
-                gamesContainer.innerHTML = '<div class="no-games">No games found for ' + date + '</div>';
+                gamesContainer.innerHTML = '<div class="no-games">No se encontraron partidos para ' + date + '</div>';
                 return;
             }
             
@@ -281,16 +299,39 @@
                 html += '<div class="game-status">' + game.state + '</div>';
                 
                 if (game.hasStream) {
-                    var embedUrl = httpRoot + '/embed.html?mediaId=' + game.mediaId + '&startFrom=Live';
-                    if (contentProtect) {
-                        embedUrl += '&content_protect=' + contentProtect;
-                    }
                     html += '<div class="game-actions">';
-                    html += '<a href="' + embedUrl + '" class="watch-btn">Watch Live</a>';
+                    
+                    if (statusClass === 'live') {
+                        // Para partidos en vivo, mostrar ambos botones
+                        var liveUrl = httpRoot + '/embed.html?mediaId=' + game.mediaId + '&startFrom=Live';
+                        var beginUrl = httpRoot + '/embed.html?mediaId=' + game.mediaId + '&startFrom=beginend';
+                        if (contentProtect) {
+                            liveUrl += '&content_protect=' + contentProtect;
+                            beginUrl += '&content_protect=' + contentProtect;
+                        }
+                        html += '<a href="' + liveUrl + '" class="watch-btn primary">Ver en Vivo</a>';
+                        html += '<br><br>';
+                        html += '<a href="' + beginUrl + '" class="watch-btn secondary">Ver desde el inicio</a>';
+                    } else if (statusClass === 'final') {
+                        // Para partidos finalizados, solo desde el inicio
+                        var embedUrl = httpRoot + '/embed.html?mediaId=' + game.mediaId + '&startFrom=beginend';
+                        if (contentProtect) {
+                            embedUrl += '&content_protect=' + contentProtect;
+                        }
+                        html += '<a href="' + embedUrl + '" class="watch-btn">Ver desde el inicio</a>';
+                    } else {
+                        // Para partidos programados
+                        var embedUrl = httpRoot + '/embed.html?mediaId=' + game.mediaId + '&startFrom=Live';
+                        if (contentProtect) {
+                            embedUrl += '&content_protect=' + contentProtect;
+                        }
+                        html += '<a href="' + embedUrl + '" class="watch-btn">Ver cuando inicie</a>';
+                    }
+                    
                     html += '</div>';
                 } else {
                     html += '<div class="game-actions">';
-                    html += '<span class="no-stream">No Stream Available</span>';
+                    html += '<span class="no-stream">Transmisión no disponible</span>';
                     html += '</div>';
                 }
                 
@@ -308,17 +349,17 @@
     </script>
 </head>
 <body>
-    <h1>{{appname}} - Simple View</h1>
+
     
     <!-- Controls section -->
     <div class="controls">
         <!-- Date controls -->
         <div class="control-group">
-            <label>Date</label>
+            <label>Fecha</label>
             <div class="date-controls">
                 <input type="date" id="gameDate" value="{{gameDate}}" onchange="setDate(this.value)">
-                <button {{todayDefault}} onclick="setDate('today')">today</button>
-                <button {{yesterdayDefault}} onclick="setDate('yesterday')">yesterday</button>
+                <button {{todayDefault}} onclick="setDate('today')">hoy</button>
+                <button {{yesterdayDefault}} onclick="setDate('yesterday')">ayer</button>
             </div>
         </div>
     </div>
