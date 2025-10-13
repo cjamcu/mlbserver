@@ -7,6 +7,7 @@ const minimist = require('minimist')
 const root = require('root')
 const path = require('path')
 const url = require('url')
+const fs = require('fs')
 const assert = require('assert')
 var crypto = require('crypto')
 
@@ -1368,12 +1369,12 @@ function getLastName(fullName) {
   return fullName.substring(indexOfSpace + 1);
 }
 
-// Server homepage, base URL
-app.get('/', async function(req, res) {
+// Advanced homepage, full interface
+app.get('/advanced.html', async function(req, res) {
   try {
     if ( ! (await protect(req, res)) ) return
 
-    session.requestlog('homepage', req)
+    session.requestlog('advanced.html', req)
 
     let server = (req.headers['x-forwarded-proto'] ? req.headers['x-forwarded-proto'] : 'http') + '://' + req.headers.host
     server += http_root
@@ -2610,6 +2611,144 @@ span.onclick = function() {
   }
 })
 
+// Simple homepage view - minimal interface with date, start from, and game list
+app.get('/', async function(req, res) {
+  try {
+    if ( ! (await protect(req, res)) ) return
+
+    session.requestlog('homepage', req)
+
+    let gameDate = session.liveDate()
+    let today = gameDate
+    let yesterday = session.yesterdayDate()
+    let todayUTCHours = session.getTodayUTCHours()
+    let curDate = new Date()
+    if ( req.query.date ) {
+      if ( req.query.date == VALID_DATES[1] ) {
+        gameDate = yesterday
+      } else if ( req.query.date != VALID_DATES[0] ) {
+        gameDate = req.query.date
+      }
+    } else {
+      let utcHours = curDate.getUTCHours()
+      if ( (utcHours >= todayUTCHours) && (utcHours < YESTERDAY_UTC_HOURS) ) {
+        gameDate = yesterday
+      }
+    }
+
+    let startFrom = VALID_START_FROM[1] // Default to 'Live'
+    if ( req.query.startFrom ) {
+      startFrom = req.query.startFrom
+    }
+
+    var levels = session.getLevels()
+    var level_labels = Object.keys(levels)
+    var default_level = level_labels[0]
+    var level = default_level
+    var level_ids = levels[level]
+
+    let cache_data = await session.getDayData(gameDate, false, level_ids, '')
+    
+    let content_protect = ''
+    if ( session.protection.content_protect ) {
+      content_protect = session.protection.content_protect
+    }
+
+    // Read HTML template and replace placeholders
+    try {
+      const templatePath = path.join(__dirname, 'views', 'simple.html')
+      let html = fs.readFileSync(templatePath, 'utf8')
+      
+      // Replace basic placeholders
+      html = html.replace(/\{\{appname\}\}/g, appname)
+      html = html.replace(/\{\{content_protect\}\}/g, content_protect)
+      html = html.replace(/\{\{http_root\}\}/g, http_root)
+      html = html.replace(/\{\{gameDate\}\}/g, gameDate)
+      html = html.replace(/\{\{startFrom\}\}/g, startFrom)
+      
+      // Handle button default states
+      let todayDefault = ((gameDate == today) ? 'class="default" ' : '')
+      let yesterdayDefault = ((gameDate == yesterday) ? 'class="default" ' : '')
+      
+      html = html.replace(/\{\{todayDefault\}\}/g, todayDefault)
+      html = html.replace(/\{\{yesterdayDefault\}\}/g, yesterdayDefault)
+      
+      // Build games data as JSON
+      let gamesData = []
+      if ( cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games ) {
+        for (var j = 0; j < cache_data.dates[0].games.length; j++) {
+          let game = cache_data.dates[0].games[j]
+          let awayteam = game.teams['away'].team.abbreviation
+          let hometeam = game.teams['home'].team.abbreviation
+          
+          let teams = awayteam + " @ " + hometeam
+          let state = ""
+          let time = ""
+          
+          if ( game.status.startTimeTBD == true ) {
+            time = "Time TBD"
+          } else {
+            let startTime = new Date(game.gameDate)
+            time = startTime.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true })
+          }
+          
+          var abstractGameState = game.status.abstractGameState
+          var detailedState = game.status.detailedState
+          
+          if ( abstractGameState == 'Live' ) {
+            state = "Live - " + game.linescore.inningHalf.substr(0,1) + game.linescore.currentInning
+          } else if ( abstractGameState == 'Final' ) {
+            state = "Final"
+          } else if ( detailedState == 'Postponed' ) {
+            state = "Postponed"
+          } else if ( detailedState.startsWith('Delayed') ) {
+            state = detailedState
+          } else {
+            state = "Scheduled"
+          }
+          
+          // Add scores if available
+          if ( (abstractGameState != 'Preview') && (detailedState != 'Postponed') && game.teams['away'].score !== undefined ) {
+            teams = awayteam + " " + game.teams['away'].score + " @ " + hometeam + " " + game.teams['home'].score
+          }
+          
+          // Find mediaId for embed link
+          let mediaId = null
+          if ( game.broadcasts && game.broadcasts.length > 0 ) {
+            for (var k = 0; k < game.broadcasts.length; k++) {
+              let broadcast = game.broadcasts[k]
+              if ( broadcast.availableForStreaming && broadcast.mediaId ) {
+                mediaId = broadcast.mediaId
+                break
+              }
+            }
+          }
+          
+          gamesData.push({
+            gamePk: game.gamePk.toString(),
+            teams: teams,
+            time: time,
+            state: state,
+            mediaId: mediaId,
+            hasStream: mediaId !== null
+          })
+        }
+      }
+      
+      html = html.replace(/\{\{gamesData\}\}/g, JSON.stringify(gamesData))
+      
+      res.end(html)
+    } catch (error) {
+      session.log('Error reading simple template: ' + error.message)
+      res.status(500).end('Error loading simple template')
+    }
+  } catch (e) {
+    let error_message = 'simple.html request error : ' + e.message
+    session.log(error_message)
+    res.end(error_message)
+  }
+})
+
 // Listen for OPTIONS requests and respond with CORS headers
 app.options('*', function(req, res) {
   session.requestlog('options', req, true)
@@ -2796,23 +2935,35 @@ app.get('/embed.html', async function(req, res) {
     content_protect = '?content_protect=' + session.protection.content_protect
   }
 
-  // Adapted from https://hls-js.netlify.app/demo/basic-usage.html and https://hls-js-dev.netlify.app/demo
-  var body = '<html><head><meta charset="UTF-8"><meta http-equiv="Content-type" content="text/html;charset=UTF-8"><title>' + appname + ' player</title><link rel="icon" href="favicon.svg' + content_protect + '"><style type="text/css">input[type=text],input[type=button]{-webkit-appearance:none;-webkit-border-radius:0}body{background-color:black;color:lightgrey;font-family:Arial,Helvetica,sans-serif}video{width:100% !important;height:auto !important;max-width:1280px}input[type=number]::-webkit-inner-spin-button{opacity:1}button{color:lightgray;background-color:black}button.default{color:black;background-color:lightgray}</style><script>function goBack(){var prevPage=window.location.href;window.history.go(-1);setTimeout(function(){if(window.location.href==prevPage){window.location.href="' + http_root + '/' + content_protect + '"}}, 500)}function toggleAudio(x){var elements=document.getElementsByClassName("audioButton");for(var i=0;i<elements.length;i++){elements[i].className="audioButton"}document.getElementById("audioButton"+x).className+=" default";hls.audioTrack=x}function changeTime(x){video.currentTime+=x}function changeRate(x){let newRate=Math.round((Number(document.getElementById("playback_rate").value)+x)*10)/10;if((newRate<=document.getElementById("playback_rate").max) && (newRate>=document.getElementById("playback_rate").min)){document.getElementById("playback_rate").value=newRate.toFixed(1);video.defaultPlaybackRate=video.playbackRate=document.getElementById("playback_rate").value}}function myKeyPress(e){if(e.key=="ArrowRight"){changeTime(10)}else if(e.key=="ArrowLeft"){changeTime(-10)}else if(e.key=="ArrowUp"){changeRate(0.1)}else if(e.key=="ArrowDown"){changeRate(-0.1)}}</script></head><body onkeydown="myKeyPress(event)"><script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script><video id="video"'
-  if ( controls == VALID_CONTROLS[0] ) {
-    body += ' controls'
+  // Read HTML template and replace placeholders
+  try {
+    const templatePath = path.join(__dirname, 'views', 'embed.html')
+    let html = fs.readFileSync(templatePath, 'utf8')
+    
+    // Replace placeholders
+    html = html.replace(/\{\{appname\}\}/g, appname)
+    html = html.replace(/\{\{content_protect\}\}/g, content_protect)
+    html = html.replace(/\{\{http_root\}\}/g, http_root)
+    
+    // Handle controls attribute
+    const controlsAttr = (controls == VALID_CONTROLS[0]) ? ' controls' : ''
+    html = html.replace(/\{\{controls\}\}/g, controlsAttr)
+    
+    // Handle video URL
+    html = html.replace(/\{\{video_url\}\}/g, video_url)
+    
+    // Handle HLS config
+    let hlsConfig = ''
+    if ( startFrom != VALID_START_FROM[1] ) {
+      hlsConfig = '{startPosition:0,liveSyncDuration:32400,liveMaxLatencyDuration:32410}'
+    }
+    html = html.replace(/\{\{hlsConfig\}\}/g, hlsConfig)
+    
+    res.end(html)
+  } catch (error) {
+    session.log('Error reading embed template: ' + error.message)
+    res.status(500).end('Error loading embed template')
   }
-  body += '></video><script>var video=document.getElementById("video");if(Hls.isSupported()){var hls=new Hls('
-
-  if ( startFrom != VALID_START_FROM[1] ) {
-    body += '{startPosition:0,liveSyncDuration:32400,liveMaxLatencyDuration:32410}'
-  }
-
-  body += ');hls.loadSource("' + video_url + '");hls.attachMedia(video);hls.on(Hls.Events.MEDIA_ATTACHED,function(){video.muted=true;video.play()});hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, function(){var audioSpan=document.getElementById("audioSpan");var audioButtons="";for(var i=0;i<hls.audioTracks.length;i++){audioButtons+=\'<button id="audioButton\'+i+\'" class="audioButton\';if(i==0){audioButtons+=\' default\'}audioButtons+=\'" onclick="toggleAudio(\'+i+\')">\'+hls.audioTracks[i]["name"]+"</button> "}audioSpan.innerHTML=audioButtons})}else if(video.canPlayType("application/vnd.apple.mpegurl")){video.src="' + video_url + '";video.addEventListener("canplay",function(){video.play()})}</script><p>Skip: <button onclick="changeTime(-30)">- 30 s</button> <button onclick="changeTime(-10)">- 10 s</button> <button onclick="changeTime(10)">+ 10 s</button> <button onclick="changeTime(30)">+ 30 s</button> <button onclick="changeTime(90)">+ 90 s</button>  <button onclick="changeTime(120)">+ 120 s</button> '
-
-  body += '<button onclick="changeTime(video.duration-10)">Latest</button> '
-
-  body += '<button id="airplay">AirPlay</button></p><p>Playback rate: <input type="number" value=1.0 min=0.1 max=16.0 step=0.1 id="playback_rate" size="8" style="width: 4em" onchange="video.defaultPlaybackRate=video.playbackRate=this.value"></p><p>Audio: <button onclick="video.muted=!video.muted">Toggle Mute</button> <span id="audioSpan"></span></p><p>Controls: <button onclick="video.controls=!video.controls">Toggle Controls</button></p><p><button id="pauseButton">Pause</button></p><script>document.addEventListener("DOMContentLoaded", function() {var pauseButton = document.getElementById("pauseButton"); pauseButton.addEventListener("click", function() {if (video.paused) {video.play();} else {video.pause();}}); });</script><p><button onclick="goBack()">Back</button></p><script>var airPlay=document.getElementById("airplay");if(window.WebKitPlaybackTargetAvailabilityEvent){video.addEventListener("webkitplaybacktargetavailabilitychanged",function(event){switch(event.availability){case "available":airPlay.style.display="inline";break;default:airPlay.style.display="none"}airPlay.addEventListener("click",function(){video.webkitShowPlaybackTargetPicker()})})}else{airPlay.style.display="none"}</script></body></html>'
-  res.end(body)
 })
 
 // Listen for advanced embed request, redirect to online demo hls.js player

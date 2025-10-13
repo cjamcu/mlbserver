@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{{appname}} player</title>
+    <link rel="icon" href="favicon.svg{{content_protect}}">
+    <style type="text/css">
+        input[type=text], input[type=button] {
+            -webkit-appearance: none;
+            appearance: none;
+            -webkit-border-radius: 0;
+            border-radius: 0;
+        }
+        
+        body {
+            background-color: #0a0a0a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 8px;
+            box-sizing: border-box;
+            font-size: 14px;
+            overflow-x: hidden;
+        }
+        
+        video {
+            width: 100% !important;
+            height: auto !important;
+            max-width: 90vw;
+            max-height: 60vh;
+            display: block;
+            margin: 0 auto 6px auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        
+        /* Desktop video sizing */
+        @media (min-width: 1200px) {
+            video {
+                max-width: 1000px;
+                max-height: 562px;
+            }
+        }
+        
+        @media (min-width: 1600px) {
+            video {
+                max-width: 1200px;
+                max-height: 675px;
+            }
+        }
+        
+        input[type=number]::-webkit-inner-spin-button {
+            opacity: 1;
+        }
+        
+        /* Main control bar */
+        .main-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 4px 0;
+            padding: 8px;
+            background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
+            border-radius: 8px;
+            border: 1px solid #333;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .main-controls button {
+            background: linear-gradient(135deg, #333, #444);
+            border: 1px solid #555;
+            color: #fff;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-height: 32px;
+            min-width: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .main-controls button:hover {
+            background: linear-gradient(135deg, #444, #555);
+            border-color: #666;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .main-controls button:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+        
+        .main-controls button.active {
+            background: linear-gradient(135deg, #007acc, #005a9e);
+            border-color: #0088ff;
+        }
+        
+        /* Skip controls */
+        .skip-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            margin: 4px 0;
+            padding: 6px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .skip-controls button {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #ccc;
+            padding: 6px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-height: 28px;
+            min-width: 45px;
+        }
+        
+        .skip-controls button:hover {
+            background: #3a3a3a;
+            border-color: #555;
+            color: #fff;
+        }
+        
+        .skip-controls button:active {
+            background: #1a1a1a;
+        }
+        
+        /* Secondary controls */
+        .secondary-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin: 4px 0;
+        }
+        
+        .playback-speed-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .playback-speed-group label {
+            margin-bottom: 0;
+            min-width: auto;
+            white-space: nowrap;
+            font-size: 11px;
+        }
+        
+        .playback-speed-group input {
+            width: 60px;
+            flex-shrink: 0;
+            padding: 4px 6px;
+            font-size: 12px;
+            background-color: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .control-group {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 6px;
+        }
+        
+        .control-group label {
+            display: block;
+            font-size: 10px;
+            font-weight: 600;
+            color: #999;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .control-group input[type=number] {
+            width: 100%;
+            padding: 4px 6px;
+            font-size: 12px;
+            background-color: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .control-group input[type=number]:focus {
+            outline: none;
+            border-color: #007acc;
+            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+        }
+        
+        #audioSpan {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        
+        #audioSpan button {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #ccc;
+            padding: 3px 6px;
+            font-size: 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        #audioSpan button:hover {
+            background: #3a3a3a;
+            color: #fff;
+        }
+        
+        #audioSpan button.default {
+            background: #007acc;
+            border-color: #0088ff;
+            color: #fff;
+        }
+        
+        .control-button {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #ccc;
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: auto;
+            margin: 0;
+            display: inline-block;
+            min-width: 100px;
+        }
+        
+        .control-button:hover {
+            background: #3a3a3a;
+            color: #fff;
+        }
+        
+        /* Navigation */
+        .nav-controls {
+            display: flex;
+            justify-content: center;
+            margin: 8px 0;
+        }
+        
+        .nav-controls button {
+            background: linear-gradient(135deg, #444, #555);
+            border: 1px solid #666;
+            color: #fff;
+            padding: 8px 16px;
+            font-size: 13px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .nav-controls button:hover {
+            background: linear-gradient(135deg, #555, #666);
+            transform: translateY(-1px);
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+                font-size: 14px;
+                overflow-x: hidden;
+            }
+            
+            .main-controls {
+                gap: 8px;
+                padding: 12px;
+                margin: 8px 0;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .main-controls button {
+                padding: 8px 12px;
+                font-size: 13px;
+                min-height: 36px;
+                flex: 1;
+                min-width: 0;
+                max-width: 120px;
+            }
+            
+            .skip-controls {
+                gap: 6px;
+                padding: 8px;
+                margin: 8px 0;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .skip-controls button {
+                padding: 6px 8px;
+                font-size: 12px;
+                min-height: 32px;
+                flex: 1;
+                min-width: 0;
+                max-width: 80px;
+            }
+            
+            .secondary-controls {
+                grid-template-columns: 1fr;
+                gap: 8px;
+                margin: 8px 0;
+            }
+            
+            .control-group {
+                padding: 8px;
+            }
+            
+            .playback-speed-group {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+            
+            .playback-speed-group label {
+                font-size: 10px;
+                margin-bottom: 0;
+                align-self: flex-start;
+            }
+            
+            .playback-speed-group input {
+                width: 100%;
+                font-size: 14px;
+                padding: 8px 12px;
+                text-align: center;
+            }
+            
+            .control-button {
+                width: 100%;
+                padding: 8px 12px;
+                font-size: 13px;
+                margin: 0;
+            }
+            
+            video {
+                margin-bottom: 8px;
+            }
+        }
+        
+        /* Small mobile screens */
+        @media (max-width: 480px) {
+            body {
+                padding: 12px;
+            }
+            
+            .main-controls {
+                gap: 6px;
+                padding: 8px;
+            }
+            
+            .main-controls button {
+                font-size: 12px;
+                padding: 6px 8px;
+                min-height: 32px;
+                max-width: 100px;
+            }
+            
+            .skip-controls {
+                gap: 4px;
+                padding: 6px;
+            }
+            
+            .skip-controls button {
+                font-size: 11px;
+                padding: 4px 6px;
+                min-height: 28px;
+                max-width: 60px;
+            }
+        }
+    </style>
+    <script>
+        function goBack() {
+            var prevPage = window.location.href;
+            window.history.go(-1);
+            setTimeout(function() {
+                if (window.location.href == prevPage) {
+                    window.location.href = "{{http_root}}/{{content_protect}}"
+                }
+            }, 500);
+        }
+        
+        function toggleAudio(x) {
+            var elements = document.getElementsByClassName("audioButton");
+            for (var i = 0; i < elements.length; i++) {
+                elements[i].className = "audioButton";
+            }
+            document.getElementById("audioButton" + x).className += " default";
+            hls.audioTrack = x;
+        }
+        
+        function changeTime(x) {
+            video.currentTime += x;
+        }
+        
+        function changeRate(x) {
+            let newRate = Math.round((Number(document.getElementById("playback_rate").value) + x) * 10) / 10;
+            if ((newRate <= document.getElementById("playback_rate").max) && (newRate >= document.getElementById("playback_rate").min)) {
+                document.getElementById("playback_rate").value = newRate.toFixed(1);
+                video.defaultPlaybackRate = video.playbackRate = document.getElementById("playback_rate").value;
+            }
+        }
+        
+        function myKeyPress(e) {
+            if (e.key == "ArrowRight") {
+                changeTime(10);
+            } else if (e.key == "ArrowLeft") {
+                changeTime(-10);
+            } else if (e.key == "ArrowUp") {
+                changeRate(0.1);
+            } else if (e.key == "ArrowDown") {
+                changeRate(-0.1);
+            } else if (e.key == "f" || e.key == "F") {
+                toggleFullscreen();
+            } else if (e.key == " ") {
+                e.preventDefault();
+                togglePlayPause();
+            }
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                if (video.requestFullscreen) {
+                    video.requestFullscreen();
+                } else if (video.webkitRequestFullscreen) {
+                    video.webkitRequestFullscreen();
+                } else if (video.msRequestFullscreen) {
+                    video.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
+        }
+        
+        function toggleSubtitles() {
+            if (video.textTracks && video.textTracks.length > 0) {
+                for (let i = 0; i < video.textTracks.length; i++) {
+                    video.textTracks[i].mode = video.textTracks[i].mode === 'showing' ? 'hidden' : 'showing';
+                }
+                updateSubtitlesButton();
+            }
+        }
+        
+        function updateSubtitlesButton() {
+            var subtitlesButton = document.getElementById("subtitlesButton");
+            if (video.textTracks && video.textTracks.length > 0) {
+                var showing = false;
+                for (let i = 0; i < video.textTracks.length; i++) {
+                    if (video.textTracks[i].mode === 'showing') {
+                        showing = true;
+                        break;
+                    }
+                }
+                subtitlesButton.innerHTML = showing ? "Hide Subtitles" : "Show Subtitles";
+            }
+        }
+        
+        function togglePlayPause() {
+            if (video.paused) {
+                video.play();
+            } else {
+                video.pause();
+            }
+        }
+        
+        function toggleMute() {
+            video.muted = !video.muted;
+        }
+    </script>
+</head>
+<body onkeydown="myKeyPress(event)">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <video id="video"{{controls}} autoplay></video>
+    
+    <script>
+        var video = document.getElementById("video");
+        if (Hls.isSupported()) {
+            var hls = new Hls({{hlsConfig}});
+            hls.loadSource("{{video_url}}");
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MEDIA_ATTACHED, function() {
+                // Disable subtitles by default
+                if (video.textTracks && video.textTracks.length > 0) {
+                    for (let i = 0; i < video.textTracks.length; i++) {
+                        video.textTracks[i].mode = 'hidden';
+                    }
+                }
+                // Update subtitles button text
+                updateSubtitlesButton();
+                // Start playing (video will be muted initially due to autoplay policy)
+                video.play().then(() => {
+                    // Unmute after autoplay starts
+                    setTimeout(() => {
+                        video.muted = false;
+                    }, 100);
+                }).catch(() => {
+                    // If autoplay fails, try to play anyway
+                    video.play();
+                });
+            });
+            
+            // Additional event to ensure subtitles stay off
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                // Force subtitles to be hidden and update button
+                setTimeout(() => {
+                    if (video.textTracks && video.textTracks.length > 0) {
+                        for (let i = 0; i < video.textTracks.length; i++) {
+                            video.textTracks[i].mode = 'hidden';
+                        }
+                    }
+                    updateSubtitlesButton();
+                }, 500);
+            });
+            hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, function() {
+                var audioSpan = document.getElementById("audioSpan");
+                var audioButtons = "";
+                for (var i = 0; i < hls.audioTracks.length; i++) {
+                    audioButtons += '<button id="audioButton' + i + '" class="audioButton';
+                    if (i == 0) {
+                        audioButtons += ' default';
+                    }
+                    audioButtons += '" onclick="toggleAudio(' + i + ')">' + hls.audioTracks[i]["name"] + "</button> ";
+                }
+                audioSpan.innerHTML = audioButtons;
+            });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = "{{video_url}}";
+            video.addEventListener("canplay", function() {
+                // Disable subtitles by default
+                if (video.textTracks && video.textTracks.length > 0) {
+                    for (let i = 0; i < video.textTracks.length; i++) {
+                        video.textTracks[i].mode = 'hidden';
+                    }
+                }
+                // Update subtitles button text
+                updateSubtitlesButton();
+                // Start playing (video will be muted initially due to autoplay policy)
+                video.play().then(() => {
+                    // Unmute after autoplay starts
+                    setTimeout(() => {
+                        video.muted = false;
+                    }, 100);
+                }).catch(() => {
+                    // If autoplay fails, try to play anyway
+                    video.play();
+                });
+            });
+            
+            // Additional event to ensure subtitles stay off for native video
+            video.addEventListener("loadedmetadata", function() {
+                // Force subtitles to be hidden and update button
+                setTimeout(() => {
+                    if (video.textTracks && video.textTracks.length > 0) {
+                        for (let i = 0; i < video.textTracks.length; i++) {
+                            video.textTracks[i].mode = 'hidden';
+                        }
+                    }
+                    updateSubtitlesButton();
+                }, 500);
+            });
+        }
+    </script>
+    
+    <!-- Main Controls - Primary Actions -->
+    <div class="main-controls">
+        <button id="pauseButton" onclick="togglePlayPause()">Pause</button>
+        <button id="muteButton" onclick="toggleMute()">Mute</button>
+        <button onclick="toggleFullscreen()">Fullscreen</button>
+        <button id="subtitlesButton" onclick="toggleSubtitles()">Show Subtitles</button>
+ 
+    </div>
+    
+    <!-- Skip Controls - Compact Design -->
+    <div class="skip-controls">
+        <button onclick="changeTime(-30)">-30s</button>
+        <button onclick="changeTime(-10)">-10s</button>
+        <button onclick="changeTime(10)">+10s</button>
+        <button onclick="changeTime(30)">+30s</button>
+        <button onclick="changeTime(90)">+90s</button>
+        <button onclick="changeTime(120)">+2m</button>
+        <button onclick="changeTime(video.duration-10)">Latest</button>
+    </div>
+    
+    <!-- Secondary Controls -->
+    <div class="secondary-controls">
+        <div class="control-group playback-speed-group">
+            <label>Playback Speed</label>
+            <input type="number" value="1.0" min="0.1" max="16.0" step="0.1" id="playback_rate" onchange="video.defaultPlaybackRate=video.playbackRate=this.value">
+        </div>
+        <div class="control-group">
+            <label>Audio Tracks</label>
+            <span id="audioSpan"></span>
+        </div>
+    </div>
+    
+    <!-- Additional Controls -->
+    <div class="secondary-controls">
+        <div class="control-group">
+            <label>Video Controls</label>
+            <button onclick="video.controls=!video.controls" class="control-button">Toggle Native Controls</button>
+        </div>
+        <div class="control-group">
+            <label>Navigation</label>
+            <button onclick="goBack()" class="control-button">Back</button>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var pauseButton = document.getElementById("pauseButton");
+            var muteButton = document.getElementById("muteButton");
+            
+            // Update button text based on video state
+            function updatePauseButton() {
+                if (video.paused) {
+                    pauseButton.innerHTML = "Play";
+                } else {
+                    pauseButton.innerHTML = "Pause";
+                }
+            }
+            
+            function updateMuteButton() {
+                if (video.muted) {
+                    muteButton.innerHTML = "Unmute";
+                } else {
+                    muteButton.innerHTML = "Mute";
+                }
+            }
+            
+            // Listen for video state changes
+            video.addEventListener('play', updatePauseButton);
+            video.addEventListener('pause', updatePauseButton);
+            video.addEventListener('volumechange', updateMuteButton);
+            
+            // Initial state
+            updatePauseButton();
+            updateMuteButton();
+        });
+    </script>
+    
+    <script>
+        var airPlay = document.getElementById("airplay");
+        if (airPlay && window.WebKitPlaybackTargetAvailabilityEvent) {
+            video.addEventListener("webkitplaybacktargetavailabilitychanged", function(event) {
+                switch (event.availability) {
+                    case "available":
+                        airPlay.style.display = "inline";
+                        break;
+                    default:
+                        airPlay.style.display = "inline"; // Keep visible even if not available
+                }
+            });
+            airPlay.addEventListener("click", function() {
+                video.webkitShowPlaybackTargetPicker();
+            });
+        } else if (airPlay) {
+            // Keep button visible even without WebKit support
+            airPlay.style.display = "inline";
+        }
+    </script>
+</body>
+</html>
