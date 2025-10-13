@@ -1,11 +1,13 @@
 services:
   mlbserver:
-    image: tonywagner/mlbserver:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: mlbserver
     environment:
-      - TZ=America/New York
-      - account_username=your.account.email@example.com
-      - account_password=youraccountpassword
+      - TZ=America/Bogota
+      - account_username=${ACCOUNT_USERNAME}
+      - account_password=${ACCOUNT_PASSWORD}
       #- fav_teams=AZ,BAL
       #- http_root=/mlbserver
       #- debug=false
@@ -21,4 +23,7 @@ services:
     ports:
       - 9999:9999
     volumes:
-      - /path/to/your/desired/local/mlbserver/persistent/data/directory:/mlbserver/data_directory
+      - mlb_data:/mlbserver/data_directory
+
+volumes:
+  mlb_data:
