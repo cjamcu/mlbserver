@@ -8,6 +8,7 @@ const path = require('path')
 const readlineSync = require('readline-sync')
 const FileCookieStore = require('tough-cookie-filestore')
 const parseString = require('xml2js').parseString
+const puppeteer = require('puppeteer')
 
 const MULTIVIEW_DIRECTORY_NAME = 'multiview'
 
@@ -22,17 +23,22 @@ const TODAY_UTC_HOURS = 8 // UTC hours (EST + 4) into tomorrow to still use toda
 
 const TEAM_IDS = { 'ATH': '133', 'ATL': '144', 'AZ': '109', 'BAL': '110', 'BOS': '111', 'CHC': '112', 'CWS': '145', 'CIN': '113', 'CLE': '114', 'COL': '115', 'DET': '116', 'HOU': '117', 'KC': '118', 'LAA': '108', 'LAD': '119', 'MIA': '146', 'MIL': '158', 'MIN': '142', 'NYM': '121', 'NYY': '147', 'PHI': '143', 'PIT': '134', 'STL': '138', 'SD': '135', 'SF': '137', 'SEA': '136', 'TB': '139', 'TEX': '140', 'TOR': '141', 'WSH': '120' }
 
+const AFL_TEAM_IDS = { 'GDD': '454', 'PEJ': '490', 'SRR': '527', 'SUR': '542', 'SCO': '544', 'MSS': '555' }
+
 const LIDOM_TEAM_IDS = { 'AGU': '667', 'TOR': '668', 'EST': '669', 'GIG': '670', 'ESC': '671', 'LIC': '672' }
 
-const AFFILIATE_TEAM_IDS = { 'ATH': '237,400,499,524', 'ATL': '431,432,478,6325', 'AZ': '419,516,2310,5368', 'BAL': '418,488,548,568', 'BOS': '414,428,533,546', 'CHC': '451,521,550,553', 'CIN': '416,450,459,498', 'CLE': '402,437,445,481', 'COL': '259,342,486,538', 'CWS': '247,487,494,580', 'DET': '106,512,570,582', 'HOU': '482,573,3712,5434', 'KC': '541,565,1350,3705', 'LAA': '401,460,559,561', 'LAD': '238,260,456,526', 'MIA': '479,554,564,4124', 'MIL': '249,556,572,5015', 'MIN': '492,509,1960,3898', 'NYM': '453,505,507,552', 'NYY': '531,537,587,1956', 'PHI': '427,522,566,1410', 'PIT': '452,477,484,3390', 'SD': '103,510,584,4904', 'SEA': '403,515,529,574', 'SF': '105,461,476,3410', 'STL': '235,279,440,443', 'TB': '233,234,421,2498', 'TEX': '102,448,540,6324', 'TOR': '422,424,435,463', 'WSH': '426,436,534,547' }
+const LMP_TEAM_IDS = { 'MXC': '673', 'JAL': '674', 'MOC': '675', 'HER': '677', 'CUL': '678', 'MAZ': '679', 'OBR': '680', 'GSV': '5482', 'NAY': '6483', 'TBC': '6484' }
+
+const AFFILIATE_TEAM_IDS = {"ATH":"237,400,499,524","ATL":"431,432,478,6325","AZ":"419,516,2310,5368","BAL":"418,493,548,568","BOS":"414,428,533,546","CHC":"451,521,550,553","CIN":"416,450,459,498","CLE":"402,437,445,481","COL":"259,342,486,538","CWS":"247,487,494,580","DET":"106,512,570,582","HOU":"482,573,3712,5434","KC":"541,565,1350,3705","LAA":"460,526,559,561","LAD":"238,260,456,6482","MIA":"479,554,564,4124","MIL":"249,556,572,5015","MIN":"492,509,1960,3898","NYM":"453,505,507,552","NYY":"531,537,587,1956","PHI":"427,522,566,1410","PIT":"452,477,484,3390","SD":"103,510,584,4904","SEA":"401,403,529,574","SF":"105,461,476,3410","STL":"235,279,440,443","TB":"233,234,421,2498","TEX":"102,448,540,6324","TOR":"422,424,435,463","WSH":"426,436,534,547"}
 
 // First is default level, last should be All (also used as default org)
 const LEVELS = { 'MLB': '1', 'AAA': '11', 'AA': '12', 'A+': '13', 'A': '14', 'WINTER': '17', 'All': '1,11,12,13,14,17' }
 
 // Winter Leagues
-const AFL_ID = '119'
-const LIDOM_ID = '131'
-const WINTER_LEAGUES = [AFL_ID, LIDOM_ID]
+const AFL_ID = 119
+const LIDOM_ID = 131
+const LMP_ID = 132
+const WINTER_LEAGUES = [AFL_ID, LIDOM_ID, LMP_ID]
 
 const OFF_AIR_LOGO = 'https://lh3.googleusercontent.com/uVJBX-jpgwHsDY_o6-po2JU5-cDZuoq_CsCcqJ0-T7996z8NbOzeQCfQaAG0DB2hbkxv2VvtZ2E'
 
@@ -859,6 +865,8 @@ class sessionClass {
   constructor(argv = {}) {
     this.debug = argv.debug
 
+    this.executablePath = argv.PUPPETEER_EXECUTABLE_PATH
+
     let dirname = __dirname
     if ( argv.data_directory ) {
       dirname = argv.data_directory
@@ -1118,8 +1126,16 @@ class sessionClass {
     return LEVELS
   }
 
-  getLidomId() {
-    return LIDOM_ID
+  getAFLid() {
+    return AFL_ID
+  }
+
+  getLMPid() {
+    return LMP_ID
+  }
+
+  getWinterIds() {
+    return WINTER_LEAGUES
   }
 
   getLevelNameFromSportId(sportId) {
@@ -1140,12 +1156,8 @@ class sessionClass {
     }
   }
 
-  getLidomTeamIds(team_abbr = false) {
-    if ( team_abbr ) {
-      return LIDOM_TEAM_IDS[team_abbr]
-    } else {
-      return Object.values(LIDOM_TEAM_IDS).toString()
-    }
+  getWinterTeamIds() {
+    return Object.values(AFL_TEAM_IDS).concat(Object.values(LIDOM_TEAM_IDS), Object.values(LMP_TEAM_IDS)).toString()
   }
 
   getAffiliateTeamIds(team_abbr = false) {
@@ -2042,11 +2054,15 @@ class sessionClass {
       let cache_data
       let cache_name = dateString
       if ( level_ids != LEVELS['MLB'] ) {
-        cache_name += '.' + level_ids
+        cache_name += '.' + level_ids.replaceAll(',', '')
       }
       if ( team_ids != '' ) {
-        cache_name += '.' + team_ids
+        cache_name += '.' + team_ids.replaceAll(',', '')
       }
+      if ( cache_name.length > 250 ) {
+        cache_name = cache_name.slice(0, 250)
+      }
+      
       //let data_url = 'https://bdfed.stitch.mlbinfra.com/bdfed/transform-mlb-scoreboard?stitch_env=prod&sortTemplate=2&sportId=1&sportId=17&startDate=' + dateString + '&endDate=' + dateString + '&gameType=E&&gameType=S&&gameType=R&&gameType=F&&gameType=D&&gameType=L&&gameType=W&&gameType=A&language=en&leagueId=104&leagueId=103&leagueId=131&contextTeamId='
       let data_url = 'https://statsapi.mlb.com/api/v1/schedule?sportId=' + level_ids
       if ( team_ids != '' ) {
@@ -2142,13 +2158,16 @@ class sessionClass {
       let utcHours = 5
 
       let cache_data
-      let cache_name = 'week'
+      let cache_name = 'w'
 
       if ( level_ids != LEVELS['All'] ) {
-        cache_name += '.' + level_ids
+        cache_name += '.' + level_ids.replaceAll(',', '')
       }
       if ( team_ids != '' ) {
-        cache_name += '.' + team_ids
+        cache_name += '.' + team_ids.replaceAll(',', '')
+      }
+      if ( cache_name.length > 250 ) {
+        cache_name = cache_name.slice(0, 250)
       }
 
       let cache_file = path.join(this.CACHE_DIRECTORY, cache_name + '.json')
@@ -2265,8 +2284,8 @@ class sessionClass {
                 team_ids += ',' + AFFILIATE_TEAM_IDS[includeTeams[i]]
               }
             }
-            if ( includeTeams.includes('LIDOM') ) {
-              team_ids += ',' + this.getLidomTeamIds()
+            if ( includeTeams.includes('WINTER') ) {
+              team_ids += ',' + this.getWinterTeamIds()
             }
           } else {
             team_ids = this.getTeamIds()
@@ -2275,8 +2294,8 @@ class sessionClass {
                 team_ids += ',' + AFFILIATE_TEAM_IDS[this.credentials.fav_teams[i]]
               }
             }
-            if ( (excludeTeams.length == 0) || !excludeTeams.includes('LIDOM') ) {
-              team_ids += ',' + this.getLidomTeamIds()
+            if ( (excludeTeams.length == 0) || !excludeTeams.includes('WINTER') ) {
+              team_ids += ',' + this.getWinterTeamIds()
             }
           }
         }
@@ -2316,7 +2335,7 @@ class sessionClass {
                     }
                   }
                 }
-                  if ( (broadcastName == 'N/A') && (league_id != LIDOM_ID) ) {
+                  if ( (broadcastName == 'N/A') && !WINTER_LEAGUES.includes(league_id) ) {
                     continue
                   } else {
                     //for (var k = 0; k < cache_data.dates[i].games[j].broadcasts.length; k++) {
@@ -2336,11 +2355,23 @@ class sessionClass {
                       if ( league_id == LIDOM_ID ) {
                         let lidom_abbr = cache_data.dates[i].games[j].teams['home'].team.name.replace(/[^A-Z]/g, '').toLowerCase()
                         logo = 'https://pizarra.multimediard.com/ac/' + lidom_abbr + '.png'
+                      } else if ( league_id == LMP_ID ) {
+                        logo = 'https://cdn.lmp.mx/teams/default/' + team.toLowerCase() + '.png'
+                        if ( team == 'NAY' ) logo = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS0-Iyk0hS66mSJUiibq2ERvqfzzmQgMY8yAg';
+                        if ( team == 'TBC' ) logo = 'https://assets.simpleviewinc.com/simpleview/image/upload/c_limit,q_75,w_200/v1/crm/tucson/thumbnail_VECTORES_TUCSONBASEBALLTEAM-02_9C60D191-B719-AF5A-B7D5280D6EAE26EC_9c74a7a4-f651-f1e8-6d6360da6b7ac51c.jpg';
                       }
                       let streamMediaType = 'Video'
                       let stream = server + '/stream.m3u8?team=' + encodeURIComponent(team) + '&mediaType=' + streamMediaType
-                      if ( league_id == LIDOM_ID ) {
-                        stream = server + '/stream.m3u8?event=' + encodeURIComponent(cache_data.dates[i].games[j].teams['home'].team.shortName.toUpperCase()) + '&mediaType=' + streamMediaType
+                      if ( WINTER_LEAGUES.includes(league_id) ) {
+                        if ( league_id == AFL_ID ) {
+                          stream = server + '/stream.m3u8?event=' + encodeURIComponent(cache_data.dates[i].games[j].teams['home'].team.abbreviation.toUpperCase())
+                        //} else if ( league_id == LMP_ID ) {
+                        //  stream = server + '/stream.m3u8?event=' + encodeURIComponent(cache_data.dates[i].games[j].teams['home'].team.name.split(' ')[0].toUpperCase())
+                        } else {
+                          stream = server + '/stream.m3u8?event=' + encodeURIComponent(cache_data.dates[i].games[j].teams['home'].team.shortName.toUpperCase())
+                        }
+                        stream += '&league_id=' + league_id
+                        stream += '&mediaType=' + streamMediaType
                       }
                       stream += '&level=' + encodeURIComponent(this.getLevelNameFromSportId(sportId))
                       stream += '&resolution=' + resolution
@@ -2367,6 +2398,8 @@ class sessionClass {
                             title = 'AFL'
                           } else if ( league_id == LIDOM_ID ) {
                             title = 'LIDOM'
+                          } else if ( league_id == LMP_ID ) {
+                            title = 'LMP'
                           } else {
                             title = 'MiLB'
                           }
@@ -2385,7 +2418,7 @@ class sessionClass {
                       if ( scheduledInnings != '9' ) {
                         description += scheduledInnings + '-inning game. '
                       }
-                      if ( cache_data.dates[i].games[j].teams['away'].team.parentOrgName && cache_data.dates[i].games[j].teams['home'].team.parentOrgName ) {
+                      if ( !WINTER_LEAGUES.includes(league_id) && cache_data.dates[i].games[j].teams['away'].team.parentOrgName && cache_data.dates[i].games[j].teams['home'].team.parentOrgName ) {
                         description += cache_data.dates[i].games[j].teams['away'].team.name + ' (' + this.getParent(cache_data.dates[i].games[j].teams['away'].team.parentOrgName) + ') at ' + cache_data.dates[i].games[j].teams['home'].team.name + ' (' + this.getParent(cache_data.dates[i].games[j].teams['home'].team.parentOrgName) + '). '
                       }
                       if ( (cache_data.dates[i].games[j].teams['away'].probablePitcher && cache_data.dates[i].games[j].teams['away'].probablePitcher.fullName) || (cache_data.dates[i].games[j].teams['home'].probablePitcher && cache_data.dates[i].games[j].teams['home'].probablePitcher.fullName) ) {
@@ -2470,10 +2503,11 @@ class sessionClass {
 
                         if ( (broadcast.type == 'TV') || ((mediaType == 'Audio') && (broadcast.language == language)) ) {
                           let teamType = broadcast.homeAway
+                          let opponent_teamType = 'away'
 
-                          if ( (mediaType == 'MLBTV') && (cache_data.dates[i].games[j].seriesDescription != 'Regular Season') && (cache_data.dates[i].games[j].seriesDescription != 'Spring Training') ) {
+                          /*if ( (mediaType == 'MLBTV') && (cache_data.dates[i].games[j].seriesDescription != 'Regular Season') && (cache_data.dates[i].games[j].seriesDescription != 'Spring Training') ) {
                             teamType = 'NATIONAL'
-                          }
+                          }*/
                           let team = cache_data.dates[i].games[j].teams['home'].team.abbreviation
                           let opponent_team = cache_data.dates[i].games[j].teams['away'].team.abbreviation
 
@@ -2488,7 +2522,6 @@ class sessionClass {
                             }
                           } else {
                             teamType = teamType.toLowerCase()
-                            let opponent_teamType = 'away'
                             if ( teamType == 'away' ) {
                               opponent_teamType = 'home'
                             }
@@ -2498,8 +2531,9 @@ class sessionClass {
                           if ( (excludeTeams.length > 0) && (excludeTeams.includes(team) || excludeTeams.includes(opponent_team) || ((teamType == 'NATIONAL') && excludeTeams.includes(teamType))) ) {
                             continue
                           } else if ( (includeTeams.length == 0) || includeTeams.includes(team) || ((teamType == 'NATIONAL') && (includeTeams.includes(teamType) || includeTeams.includes(opponent_team))) || ((broadcast_count == 1) && includeTeams.includes(opponent_team)) || ((broadcast.freeGame == true) && includeTeams.includes('FREE')) ) {
-                            if ( (broadcast_count == 1) && !includeTeams.includes(team) && includeTeams.includes(opponent_team) ) {
+                            if ( (teamType != 'NATIONAL') && (broadcast_count == 1) && !includeTeams.includes(team) && includeTeams.includes(opponent_team) ) {
                               team = opponent_team
+                              teamType = opponent_teamType
                             }
                             let logo = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRi5AKF6eAu9Va9BzZzgw0PSsQXw8rXPiQLHA'
                             let seriesId = 'MLB'
@@ -2733,6 +2767,39 @@ class sessionClass {
           channels = this.sortObj(channels)
           
           let entitlements = await this.getEntitlements()
+          
+          // MASN live stream for entitled subscribers
+          try {
+              if ( (entitlements.includes('MASN_110')) ) {
+                if ( (mediaType == 'MLBTV') && ((includeLevels.length == 0) || includeLevels.includes('MLB') || includeLevels.includes('ALL')) ) {
+                  if ( (excludeTeams.length > 0) && excludeTeams.includes('MASN') ) {
+                    // do nothing
+                  } else if ( (includeTeams.length == 0) || includeTeams.includes('MASN') ) {
+                    this.debuglog('getTVData processing MASN')
+                    let logo = 'https://img.mlbstatic.com/mlb-images/image/upload/t_16x9/t_w640/v1745242435/mlb/jov4fxbzmqikc8umj5kr.png'
+                    let channelid = mediaType + '.MASN'
+                    //if ( this.protection.content_protect ) logo += '&amp;content_protect=' + this.protection.content_protect
+                    let stream = server + '/stream.m3u8?event=masn&mediaType=Video&resolution=' + resolution
+                    if ( this.protection.content_protect ) stream += '&content_protect=' + this.protection.content_protect
+                    if ( pipe == 'true' ) stream = await this.convert_stream_to_pipe(stream, channelid)
+                    channels[channelid] = await this.create_channel_object(channelid, logo, stream, mediaType)
+
+                    let title = 'MASN'
+                    let description = 'Live stream of MASN (Mid-Atlantic Sports Network)'
+
+                    let start = this.convertDateToXMLTV(new Date(cache_data.dates[0].date + ' 00:00:00'))
+                    let stop = this.convertDateToXMLTV(new Date(cache_data.dates[cache_data.dates.length-1].date + ' 00:00:00'))
+
+                    // MASN guide XML
+                    programs += await this.generate_xml_program(channelid, start, stop, title, description, logo, this.convertStringToAirDate(cache_data.dates[0].date))
+                    this.debuglog('getTVData completed MASN')
+                  } // end includeTeams check
+                } // end mediaType check
+              } // end entitlements check
+          } catch (e) {
+            this.debuglog('getTVData MASN detect error : ' + e.message)
+          }
+          
           // MLB Network live stream for eligible USA subscribers
           try {
               if ( (entitlements.includes('MLBN') || entitlements.includes('EXECMLB') || entitlements.includes('MLBTVMLBNADOBEPASS')) ) {
@@ -2819,7 +2886,7 @@ class sessionClass {
                     let start = this.convertDateToXMLTV(new Date(cache_data.dates[0].date + ' 00:00:00'))
                     let stop = this.convertDateToXMLTV(new Date(cache_data.dates[cache_data.dates.length-1].date + ' 00:00:00'))
 
-                    // SNLA guide XML
+                    // SNY guide XML
                     programs += await this.generate_xml_program(channelid, start, stop, title, description, logo, this.convertStringToAirDate(cache_data.dates[0].date))
                     this.debuglog('getTVData completed SNY')
                   } // end includeTeams check
@@ -3255,6 +3322,7 @@ class sessionClass {
   async getSkipMarkers(gamePk, skip_type, start_inning, start_inning_half, streamURL, streamURLToken, skip_adjust, broadcast_start_timestamp=false) {
     try {
       this.debuglog('getSkipMarkers')
+      let variantPlaylist;
 
       if ( skip_adjust != 0 ) this.log('manual adjustment of ' + skip_adjust + ' seconds being applied')
       
@@ -3278,7 +3346,7 @@ class sessionClass {
 
       // Get the broadcast start time first, if necessary -- event times will be relative to this
       if ( !broadcast_start_timestamp ) {
-        let variantPlaylist = await this.getVariantPlaylist(streamURL, streamURLToken)
+        variantPlaylist = await this.getVariantPlaylist(streamURL, streamURLToken)
         broadcast_start_timestamp = await this.getBroadcastStart(variantPlaylist)
       }
 
@@ -3424,6 +3492,10 @@ class sessionClass {
           // if skipping commercials, look at the variant playlist to detect insertions
           if ( skip_type == 4 ) {
             this.debuglog('detecting commercial breaks')
+            if (!variantPlaylist) {
+              this.debuglog('variantPlaylist missing, fetching...')
+              variantPlaylist = await this.getVariantPlaylist(streamURL, streamURLToken)
+            }
             let body = variantPlaylist
             let break_active = false
             let break_end = 0
@@ -3474,62 +3546,118 @@ class sessionClass {
       let currentDate = new Date()
       if ( !this.cache || !this.cache.bigInningScheduleCacheExpiry || (currentDate > new Date(this.cache.bigInningScheduleCacheExpiry)) ) {
         if ( !this.cache.bigInningSchedule ) this.cache.bigInningSchedule = {}
-        let reqObj = {
-          url: 'https://api.fubo.tv/gg/series/123881219/live-programs?limit=14&languages=en&countrySlugs=USA',
-          headers: {
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'no-cache',
-            'dnt': '1',
-            'pragma': 'no-cache',
-            'sec-ch-ua': '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"macOS"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'none',
-            'sec-fetch-user': '?1',
-            'sec-gpc': '1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': USER_AGENT
-          },
-          json: true,
-          gzip: true
-        }
-        var response = await this.httpGet(reqObj, false)
-        if ( response ) {
-          this.debuglog(JSON.stringify(response))
-          
-          if ( response.data ) {
-            for (var i=0; i < response.data.length; i++) {
-              if ( response.data[i].airings && (response.data[i].airings.length > 0) ) {
-                for (var j=0; j < response.data[i].airings.length; j++) {
-                  if ( response.data[i].airings[j].station && response.data[i].airings[j].station.name && (response.data[i].airings[j].station.name == 'MLB Big Inning') && response.data[i].airings[j].accessRightsV2 && response.data[i].airings[j].accessRightsV2.live ) {
-                    let est_date = new Date(response.data[i].airings[j].accessRightsV2.live.startTime).toLocaleString("en-US", {timeZone: 'America/New_York'})
-                    let date_array = est_date.split(',')[0].split('/')
-                    let this_datestring = date_array[2] + '-' + date_array[0].padStart(2, '0') + '-' + date_array[1].padStart(2, '0')
-                    this.cache.bigInningSchedule[this_datestring] = {
-                      start: response.data[i].airings[j].accessRightsV2.live.startTime, 
-                      end: response.data[i].airings[j].accessRightsV2.live.endTime
-                    }
-                    break
-                  }
+        
+        const browser = await puppeteer.launch({
+          headless: 'new',
+          executablePath: this.executablePath,
+          args: [
+            '--no-sandbox',
+            '--disable-gpu',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+          ],
+        })
+        const page = await browser.newPage()
+        await page.setUserAgent(USER_AGENT)
+        await page.goto('https://support.mlb.com/s/article/What-Is-MLB-Big-Inning?language=en_US', { waitUntil: 'networkidle0' })
+        const response = await page.content()
+        await browser.close()
+        
+        // break HTML into array based on table rows
+        var rows = response.split('<tr ')
+        // start iterating at 2 (after header row)
+        for (var i=2; i<rows.length; i++) {
+          // split HTML row into array with columns
+          let cols = rows[i].split('<td ')
+
+          // define some variables that persist for each row
+          let parts
+          let year
+          let month
+          let day
+          let this_datestring
+          let add_date = 0
+          let d
+
+          // start iterating at 2 (after DOW column)
+          for (var j=2; j<cols.length; j++) {
+            // split on brackets to get column text at resulting array index 0
+            let col = cols[j].split('>')[1].split('<')
+            switch(j){
+              // first column is date
+              case 2:
+                // split date into array
+                // old date format (January 1, 1970) (disabled)
+                /*parts = col[0].split(' ')
+                year = parts[2]
+                // get month index, zero-based
+                month = new Date(Date.parse(parts[0] +" 1, 2021")).getMonth()
+                day = parts[1].substring(0,parts[1].length-3)*/
+                // new date format (01/01/70)
+                parts = col[0].split('/')
+                year = parts[2]
+                if ( year.length == 2 ) {
+                  year = '20' + parts[2]
                 }
-              }
+                // get month index, zero-based
+                month = parseInt(parts[0]) - 1
+                day = parts[1]
+                this_datestring = new Date(year, month, day).toISOString().substring(0,10)
+                this.cache.bigInningSchedule[this_datestring] = {}
+                // increment month index (not zero-based)
+                month += 1
+                break
+              // remaining columns are times
+              default:
+                let hour
+                let minute = '00'
+                let ampm
+                // if time has colon, split into array on that to get hour and minute parts
+                if ( col[0].indexOf(':') > 0 ) {
+                  parts = col[0].split(':')
+                  hour = parseInt(parts[0])
+                  minute = parts[1].substring(0,2)
+                } else {
+                  hour = parseInt(col[0].substring(0,col[0].length-2))
+                }
+                ampm = col[0].substring(col[0].length-2,col[0].length)
+                // convert hour to 24-hour format
+                if ( (ampm == 'PM') || ((hour == 12) && (ampm == 'AM')) ) {
+                  hour += 12
+                }
+                // these times are EDT so add 4 for UTC
+                hour += 4
+                // if hour is beyond 23, note we will have to add 1 day
+                if ( hour > 23 ) {
+                  add_date = 1
+                  hour -= 24
+                }
+
+                d = new Date(this_datestring + 'T' + hour.toString().padStart(2, '0') + ':' + minute.toString().padStart(2, '0') + ':00.000+00:00')
+                d.setDate(d.getDate()+add_date)
+                switch(j){
+                  // 3rd column is start time
+                  case 3:
+                    this.cache.bigInningSchedule[this_datestring].start = d
+                    break
+                  // 3rd column is end time
+                  case 4:
+                    this.cache.bigInningSchedule[this_datestring].end = d
+                    break
+                }
+                break
             }
           }
-          this.debuglog(JSON.stringify(this.cache.bigInningSchedule))
-
-          // Default cache period is 1 day from now
-          let oneDayFromNow = new Date()
-          oneDayFromNow.setDate(oneDayFromNow.getDate()+1)
-          let cacheExpiry = oneDayFromNow
-          this.cache.bigInningScheduleCacheExpiry = cacheExpiry
-
-          this.save_cache_data()
-        } else {
-          this.log('error : invalid response from url ' + reqObj.url)
         }
+        this.debuglog(JSON.stringify(this.cache.bigInningSchedule))
+
+        // Default cache period is 1 day from now
+        let oneDayFromNow = new Date()
+        oneDayFromNow.setDate(oneDayFromNow.getDate()+1)
+        let cacheExpiry = oneDayFromNow
+        this.cache.bigInningScheduleCacheExpiry = cacheExpiry
+
+        this.save_cache_data()
       } else {
         this.debuglog('using cached big inning schedule')
       }
@@ -3574,18 +3702,17 @@ class sessionClass {
   }
 
   // Get event data
-  async getEventData() {
+  async getEventData(url) {
     try {
       this.debuglog('getEventData')
 
       let cache_data
-      let cache_name = 'events'
+      let cache_name = url.substring(url.lastIndexOf('/')+1)
       let cache_file = path.join(this.CACHE_DIRECTORY, cache_name + '.json')
       let currentDate = new Date()
-      if ( !fs.existsSync(cache_file) || !this.cache || !this.cache.eventURLCacheExpiry || (currentDate > new Date(this.cache.eventURLCacheExpiry)) ) {
+      if ( !fs.existsSync(cache_file) || !this.cache || !this.cache.eventURLCacheExpiry || !this.cache.eventURLCacheExpiry[cache_name] || (currentDate > new Date(this.cache.eventURLCacheExpiry[cache_name])) ) {
         let reqObj = {
-          url: 'https://dapi.cms.mlbinfra.com/v2/content/en-us/sel-mlbtv-featured-svod-video-list',
-          //url: 'https://dapi.mlbinfra.com/v2/content/en-us/vsmcontents/mlb-tv-welcome-center-big-inning-show',
+          url: url,
           headers: {
             'User-Agent': USER_AGENT,
             'Origin': 'https://www.mlb.com',
@@ -3605,7 +3732,10 @@ class sessionClass {
           let cacheExpiry = fiveMinutesFromNow
 
           // finally save the setting
-          this.cache.eventURLCacheExpiry = cacheExpiry
+          if (!this.cache.eventURLCacheExpiry || (this.cache.eventURLCacheExpiry !== 'object')) {
+            this.cache.eventURLCacheExpiry = {}
+          }
+          this.cache.eventURLCacheExpiry[cache_name] = cacheExpiry
           this.save_cache_data()
         } else {
           this.log('error : invalid json from url ' + reqObj.url)
@@ -3624,11 +3754,21 @@ class sessionClass {
   }
 
   // Get event URL, used to determine the stream URL if available
-  async getEventURL(eventName) {
+  async getEventURL(eventName, league_id=false) {
     try {
       this.debuglog('getEventURL')
+      if (league_id) {
+        this.debuglog('for ' + league_id)
+      }
+      
+      let url = 'https://dapi.cms.mlbinfra.com/v2/content/en-us/sel-mlbtv-featured-svod-video-list'
+      if ( league_id == LIDOM_ID ) {
+        url = 'https://dapi.cms.mlbinfra.com/v2/content/en-us/sel-dominican-winter-league-highlights-vod-video-list'
+      } else if ( league_id == LMP_ID ) {
+        url = 'https://dapi.cms.mlbinfra.com/v2/content/en-us/sel-mexican-pacific-league-highlights-vod'
+      }
 
-      let cache_data = await this.getEventData()
+      let cache_data = await this.getEventData(url)
 
       let eventList
       if ( cache_data && cache_data.items ) {
@@ -3788,7 +3928,7 @@ class sessionClass {
   }
 
   // Get event stream URL
-  async getEventStreamURL(eventName, gamePk=false) {
+  async getEventStreamURL(eventName, gamePk=false, league_id=false) {
     if ( gamePk ) {
       eventName = gamePk
     }
@@ -3805,6 +3945,8 @@ class sessionClass {
           let dateString = eventName.substring(12)
           this.debuglog('getEventStreamURL RecapRundown for ' + dateString)
           playbackURL = await this.getRecapRundownURL(dateString)
+        } else if ( eventName.toUpperCase() == 'MASN' ) {
+          playbackURL = await this.getLinearStreamURL('MASN_ONE_LIVE')
         } else if ( eventName.toUpperCase() == 'MLBN' ) {
           playbackURL = 'https://falcon.mlbinfra.com/api/v1/linear/mlbn'
         } else if ( eventName.toUpperCase() == 'SNLA' ) {
@@ -3814,7 +3956,7 @@ class sessionClass {
           playbackURL = await this.getLinearStreamURL('SNY_LIVE')
           return playbackURL
         } else {
-          playbackURL = await this.getEventURL(eventName)
+          playbackURL = await this.getEventURL(eventName, league_id)
         }
       }
       if ( !playbackURL ) {
@@ -3853,6 +3995,84 @@ class sessionClass {
           this.cacheStreamURL(eventName, playbackURL)
           return playbackURL
         }
+      }
+    }
+  }
+
+  // Get event stream URL
+  async getAFLStreamURL(team_abbr) {
+    this.debuglog('getAFLStreamURL for ' + team_abbr)
+    if ( this.cache.media && this.cache.media[team_abbr] && this.cache.media[team_abbr].streamURL && this.cache.media[team_abbr].streamURLExpiry && (Date.parse(this.cache.media[team_abbr].streamURLExpiry) > new Date()) ) {
+      this.log('using cached aflStreamURL')
+      return this.cache.media[eventName].streamURL
+    } else {
+      let aflStreamURL
+      let reqObj = {
+        url: 'https://www.mlb.com/arizona-fall-league/live-streams',
+        headers: {
+          'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'accept-encoding': 'gzip, deflate, br, zstd',
+          'accept-language': 'en-US,en;q=0.9',
+          'cache-control': 'no-cache',
+          'pragma': 'no-cache',
+          'user-agent': USER_AGENT
+        },
+        gzip: true
+      }
+      var response = await this.httpGet(reqObj, false)
+      if ( response ) {
+        // disabled because it's very big!
+        //this.debuglog('getAFLStreamURL response : ' + response)
+        let live_data = response.split('data-video-content-id="')
+        for (var i=0; i<live_data.length; i++) {
+          if ( live_data[i][0] != '"' ) {
+            let live_id = live_data[i].split('"')[0]
+            if ( live_id.includes('-' + team_abbr.toLowerCase() + '-') ) {
+              this.debuglog('getAFLStreamURL found live id for ' + team_abbr + ' : ' + live_id)
+              
+              let reqObj = {
+                url: 'https://www.mlb.com/data-service/en/videos/' + live_id,
+                headers: {
+                  'accept': '*/*',
+                  'accept-language': 'en-US,en;q=0.9',
+                  'cache-control': 'no-cache',
+                  'pragma': 'no-cache',
+                  'referer': 'https://www.mlb.com/arizona-fall-league/live-streams',
+                  'user-agent': USER_AGENT
+                }
+              }
+              var stream_response = await this.httpGet(reqObj, false)
+              if ( stream_response && this.isValidJson(stream_response) ) {
+                this.debuglog('getAFLStreamURL stream response : ' + stream_response)
+                let obj = JSON.parse(stream_response)
+                if ( obj.feeds && (obj.feeds.length > 0) ) {
+                  for (var j=0; j<obj.feeds.length; j++) {
+                    if ( obj.feeds[j].playbacks && (obj.feeds[j].playbacks.length > 0) ) {
+                      for (var k=0; k<obj.feeds[j].playbacks.length; k++) {
+                        if ( obj.feeds[j].playbacks[k].name && (obj.feeds[j].playbacks[k].name == 'hlsCloud') && obj.feeds[j].playbacks[k].url ) {
+                          this.debuglog('found aflStreamURL : ' + obj.feeds[j].playbacks[k].url)
+                          aflStreamURL = obj.feeds[j].playbacks[k].url
+                          this.cacheStreamURL(team_abbr, aflStreamURL)
+                          return aflStreamURL
+                        }
+                      }
+                    }
+                  }
+                  if (!aflStreamURL) {
+                    this.log('getAFLStreamURL failed to find stream for ' + team_abbr)
+                  }
+                } else {
+                  this.log('getAFLStreamURL failed to find feed for ' + team_abbr)
+                }
+              } else {
+                this.log('getAFLStreamURL failed to get stream response for ' + team_abbr)
+              }	
+              break
+            }
+          }
+        }
+      } else {
+        this.log('getAFLStreamURL failed to get response for ' + team_abbr)
       }
     }
   }
@@ -4193,6 +4413,7 @@ class sessionClass {
       if ( cache_data ) {
         if ( cache_data.dates && cache_data.dates[0] && cache_data.dates[0].games && (cache_data.dates[0].games.length > 0) ) {
           let team_data = this.temp_cache.gamechanger[id].streamFinderData.team_data
+          let games_CLI = this.temp_cache.gamechanger[id].streamFinderData.games_CLI
         
           var games = []
           
@@ -5457,6 +5678,56 @@ class sessionClass {
       return comskip_markers
     } catch(e) {
       this.log('getComskipMarkers error : ' + e.message)
+    }
+  }
+
+  // generates AFFILIATE_TEAM_IDS, should be done each season
+  async getAffiliates() {
+    try {
+      this.debuglog('getAffiliates')
+
+      let affiliates_data = {}
+      let reqObj = {
+        url: 'https://statsapi.mlb.com/api/v1/teams?sportIds=1,11,12,13,14&activeStatus=true&season=2026',
+        headers: {
+          'User-agent': USER_AGENT,
+          'Origin': 'https://www.mlb.com',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Content-type': 'application/json'
+        },
+        gzip: true
+      }
+      var response = await this.httpGet(reqObj, false)
+      if ( response && this.isValidJson(response) ) {
+        //this.debuglog(response)
+        let teams_data = JSON.parse(response)
+        
+        let parent_orgs = {}
+        if ( teams_data && teams_data.teams ) {
+          for (var i=0; i<teams_data.teams.length; i++) {
+            if (teams_data.teams[i].sport.id == 1) {
+              parent_orgs[teams_data.teams[i].id] = teams_data.teams[i].abbreviation
+              affiliates_data[teams_data.teams[i].abbreviation] = []
+            }
+          }
+          for (var i=0; i<teams_data.teams.length; i++) {
+            if (teams_data.teams[i].sport.id != 1) {
+              teams_data.teams[i].abbreviation
+              affiliates_data[parent_orgs[teams_data.teams[i].parentOrgId]].push(teams_data.teams[i].id)
+              affiliates_data[parent_orgs[teams_data.teams[i].parentOrgId]].sort((a, b) => a - b)
+            }
+          }
+          for (const [key, value] of Object.entries(affiliates_data)) {
+            affiliates_data[key] = value.join(',')
+          }
+          
+          console.log(JSON.stringify(this.sortObj(affiliates_data)))
+        }
+      } else {
+        this.log('error : invalid json from url ' + reqObj.url)
+      }
+    } catch(e) {
+      this.log('getAffiliates error : ' + e.message)
     }
   }
 }

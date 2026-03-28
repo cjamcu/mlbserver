@@ -319,7 +319,15 @@ app.get('/stream.m3u8', async function(req, res) {
       } else if ( req.query.highlight_src ) {
         streamURL = req.query.highlight_src
       } else if ( req.query.event ) {
-        streamURL = await session.getEventStreamURL(req.query.event.toUpperCase())
+        if ( req.query.league_id ) {
+          if ( req.query.league_id == session.getAFLid() ) {
+            streamURL = await session.getAFLStreamURL(req.query.event.toUpperCase())
+          } else {
+            streamURL = await session.getEventStreamURL(req.query.event.toUpperCase(), false, req.query.league_id)
+          }
+        } else {
+          streamURL = await session.getEventStreamURL(req.query.event.toUpperCase())
+        }
       } else {
         if ( req.query.gamePk ) {
           gamePk = req.query.gamePk
@@ -424,7 +432,7 @@ var getKey = function(url, headers, cb) {
   requestRetry(url, headers, function(err, response) {
     if (err) return cb(err)
     let key = response.body
-    session.debuglog('key returned ' + key)
+    session.debuglog('key returned ' + Buffer.from(key, 'binary').toString('base64'))
     session.temp_cache.prevKeys[url] = key
     cb(null, key)
   })
@@ -533,7 +541,7 @@ function getMasterPlaylist(streamURL, req, res, options = {}) {
       let resolution = options.resolution || VALID_RESOLUTIONS[0]
       let audio_track = options.audio_track || VALID_AUDIO_TRACKS[0]
       // if specific audio track is requested, check if master playlist contains it
-      if ( audio_track != VALID_AUDIO_TRACKS[0] ) {
+      if ( (audio_track != VALID_AUDIO_TRACKS[0]) && (audio_track != VALID_AUDIO_TRACKS[6]) ) {
         if ( !response.body.includes(',NAME="' + audio_track) ) {
           session.debuglog('requested ' + audio_track + ' audio track not available')
           // fallback check other team's radio feed
@@ -904,8 +912,8 @@ app.get('/playlist.m3u8', async function(req, res) {
             if ( parsed[1].startsWith('http') ) {
               key = parsed[1]
               session.debuglog('key url : ' + key)
-            } else if ( key.startsWith('data:;base64,') ) {
-              let newparsed = key.split(',')
+            } else if ( parsed[1].startsWith('data:;base64,') ) {
+              let newparsed = parsed[1].split(',')
               key = newparsed[1]
               session.debuglog('found key data : ' + key)
             } else {
@@ -1255,15 +1263,28 @@ app.get('/gamechangerplaylist.m3u8', async function(req, res) {
               let new_segments_complete = false
               let segment_count = 0
               for (var i=(body.length-1); i>=0; i--) {
-                if ( body[i].startsWith('#EXTINF:') ) {
-                  let line = url.resolve(u, body[i+1])
-                  if ( !new_segments_complete ) {
-                    session.debuglog(game_changer_title + 'found segment ' + line)
+                if ( body[i].startsWith('#EXT-X-KEY') ) {
+                  let key = url.resolve(u, body[i].match('URI="([^"]+)"')[1])
+                  let iv = body[i].match('IV=0x(.*)$')[1]
+                  let ts
+                  let extinf
+                  for (var j=1; j<=4; j++) {
+                    if ( body[i+j] ) {
+                      if ( !extinf && body[i+j].startsWith('#EXTINF') ) {
+                        extinf = body[i+j]
+                      } else if ( !ts && !body[i+j].startsWith('#') ) {
+                        ts = url.resolve(u, body[i+j])
+                      }
+                      if ( extinf && ts ) break;
+                    }
+                  }
+                  if ( key && iv && extinf && ts && !new_segments_complete ) {
+                    session.debuglog(game_changer_title + 'found segment ' + ts)
                     if ( discontinuity ) {
                       session.debuglog(game_changer_title + 'only getting newest segment after stream change')
-                      new_segments.unshift({'extinf':body[i], 'ts':line, 'streamURLToken':streamURLToken})
+                      new_segments.unshift({'key':key, 'iv':iv, 'extinf':extinf, 'ts':ts, 'streamURLToken':streamURLToken})
                       new_segments_complete = true
-                    } else if ( !discontinuity && (session.temp_cache.gamechanger[id].segments.length > 0) && (line == session.temp_cache.gamechanger[id].segments[session.temp_cache.gamechanger[id].segments.length-1].ts) ) {
+                    } else if ( !discontinuity && (session.temp_cache.gamechanger[id].segments.length > 0) && (ts == session.temp_cache.gamechanger[id].segments[session.temp_cache.gamechanger[id].segments.length-1].ts) ) {
                       session.debuglog(game_changer_title + 'found previous last segment')
                       new_segments_complete = true
                     } else if ( segment_count == GAMECHANGER_LIST_SIZE ) {
@@ -1274,7 +1295,7 @@ app.get('/gamechangerplaylist.m3u8', async function(req, res) {
                       }
                       new_segments_complete = true
                     } else {
-                      new_segments.unshift({'extinf':body[i], 'ts':line, 'streamURLToken':streamURLToken})
+                      new_segments.unshift({'key':key, 'iv':iv, 'extinf':extinf, 'ts':ts, 'streamURLToken':streamURLToken})
                     }
                   }
                   segment_count++
@@ -1307,7 +1328,7 @@ app.get('/gamechangerplaylist.m3u8', async function(req, res) {
                 if ( session.temp_cache.gamechanger[id].segments[i].discontinuity ) {
                   session.temp_cache.gamechanger[id].playlist[resolution] += '#EXT-X-DISCONTINUITY' + '\n'
                 }
-                session.temp_cache.gamechanger[id].playlist[resolution] += session.temp_cache.gamechanger[id].segments[i].extinf + '\n' + http_root + '/segment.ts?url=' + encodeURIComponent(session.temp_cache.gamechanger[id].segments[i].ts) + '&streamURLToken='+encodeURIComponent(session.temp_cache.gamechanger[id].segments[i].streamURLToken) + content_protect + '\n'
+                session.temp_cache.gamechanger[id].playlist[resolution] += session.temp_cache.gamechanger[id].segments[i].extinf + '\n' + http_root + '/segment.ts?url=' + encodeURIComponent(session.temp_cache.gamechanger[id].segments[i].ts) + '&streamURLToken='+encodeURIComponent(session.temp_cache.gamechanger[id].segments[i].streamURLToken) + '&key='+encodeURIComponent(session.temp_cache.gamechanger[id].segments[i].key) + '&iv='+encodeURIComponent(session.temp_cache.gamechanger[id].segments[i].iv) + content_protect + '\n'
               }
 
               session.debuglog(game_changer_title + 'playlist ' + session.temp_cache.gamechanger[id].playlist[resolution])
@@ -1435,10 +1456,13 @@ app.get('/advanced.html', async function(req, res) {
     }
     let cache_name = gameDate
     if ( level_ids != levels['MLB'] ) {
-      cache_name += '.' + level_ids
+      cache_name += '.' + level_ids.replaceAll(',', '')
     }
     if ( team_ids != '' ) {
-      cache_name += '.' + team_ids
+      cache_name += '.' + team_ids.replaceAll(',', '')
+    }
+    if ( cache_name.length > 250 ) {
+      cache_name = cache_name.slice(0, 250)
     }
 
     var cache_data = await session.getDayData(gameDate, false, level_ids, team_ids)
@@ -1674,6 +1698,33 @@ app.get('/advanced.html', async function(req, res) {
     let currentDate = new Date()
 
     let entitlements = await session.getEntitlements()
+
+    // MASN live stream for entitled subscribers
+    try {
+        if ( entitlements.includes('MASN_110') ) {
+          body += '<tr><td><span class="tooltip">MASN<span class="tooltiptext">MASN live stream for entitled subscribers. <a href="https://support.mlb.com/s/article/MASN-In-Market-Offering">See here for more information</a>.</span></span></td><td>'
+          let querystring = '?event=MASN'
+          let multiviewquerystring = querystring + '&resolution=' + DEFAULT_MULTIVIEW_RESOLUTION
+          if ( linkType == VALID_LINK_TYPES[0] ) {
+            if ( startFrom != VALID_START_FROM[0] ) querystring += '&startFrom=' + startFrom
+            if ( controls != VALID_CONTROLS[0] ) querystring += '&controls=' + controls
+          }
+          if ( resolution != VALID_RESOLUTIONS[0] ) querystring += '&resolution=' + resolution
+          if ( linkType == VALID_LINK_TYPES[1] ) {
+            if ( force_vod != VALID_FORCE_VOD[0] ) querystring += '&force_vod=' + force_vod
+          } else if ( linkType == VALID_LINK_TYPES[4] ) {
+            querystring += '&filename=' + gameDate + ' MASN'
+          }
+          querystring += content_protect_b
+          multiviewquerystring += content_protect_b
+          body += '<a href="' + thislink + querystring + '">MASN</a>'
+          body += '<input type="checkbox" value="http://127.0.0.1:' + session.data.port + '/stream.m3u8' + multiviewquerystring + '" onclick="addmultiview(this)">'
+          body += '</td></tr>' + "\n"
+        } // end entitlements check
+    } catch (e) {
+      session.debuglog('MASN detect error : ' + e.message)
+    }
+    
     // MLB Network live stream for eligible USA subscribers
     try {
         if ( entitlements.includes('MLBN') || entitlements.includes('EXECMLB') || entitlements.includes('MLBTVMLBNADOBEPASS') ) {
@@ -2089,8 +2140,15 @@ app.get('/advanced.html', async function(req, res) {
                 startTime.setMinutes(startTime.getMinutes()-30)
                 if ( (currentTime >= startTime) ) {
                   let querystring
-                  if ( cache_data.dates[0].games[j].teams['home'].team.league.id == session.getLidomId() ) {
-                    querystring = '?event=' + encodeURIComponent(cache_data.dates[0].games[j].teams['home'].team.shortName.toUpperCase())
+                  if ( session.getWinterIds().includes(cache_data.dates[0].games[j].teams['home'].team.league.id) ) {
+                    if ( session.getAFLid() == cache_data.dates[0].games[j].teams['home'].team.league.id ) {
+                      querystring = '?event=' + encodeURIComponent(cache_data.dates[0].games[j].teams['home'].team.abbreviation.toUpperCase())
+                    //} else if ( session.getLMPid() == cache_data.dates[0].games[j].teams['home'].team.league.id ) {
+                    //  querystring = '?event=' + encodeURIComponent(cache_data.dates[0].games[j].teams['home'].team.name.split(' ')[0].toUpperCase())
+                    } else {
+                      querystring = '?event=' + encodeURIComponent(cache_data.dates[0].games[j].teams['home'].team.shortName.toUpperCase())
+                    }
+                    querystring += '&league_id=' + cache_data.dates[0].games[j].teams['home'].team.league.id
                   } else {
                     querystring = '?gamePk=' + gamePk
                   }
@@ -2421,7 +2479,7 @@ app.get('/advanced.html', async function(req, res) {
       resolution = 'best'
     }
 
-    body += '<p><span class="tooltip">All<span class="tooltiptext">Will include all entitled live MLB broadcasts (games plus Big Inning, Game Changer, and Multiview, as well as MLB Network, SNLA, and/or SNY as appropriate). If favorite team(s) have been provided, it will also include affiliate games for those organizations. Channels/games subject to blackout will be omitted by default. See below for an additional option to override that.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + content_protect_b + '">channels.m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + content_protect_b + '">guide.xml</a> and <a href="' + http_root + '/calendar.ics?mediaType=' + mediaType + content_protect_b + '">calendar.ics</a></p>' + "\n"
+    body += '<p><span class="tooltip">All<span class="tooltiptext">Will include all entitled live MLB broadcasts (games plus Big Inning, Game Changer, and Multiview, as well as MASN, MLB Network, SNLA, and/or SNY as appropriate). If favorite team(s) have been provided, it will also include affiliate games for those organizations. Channels/games subject to blackout will be omitted by default. See below for an additional option to override that.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + content_protect_b + '">channels.m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + content_protect_b + '">guide.xml</a> and <a href="' + http_root + '/calendar.ics?mediaType=' + mediaType + content_protect_b + '">calendar.ics</a></p>' + "\n"
 
     let include_teams = 'ath,atl'
     if ( (session.credentials.fav_teams.length > 0) && (session.credentials.fav_teams[0].length > 0) ) {
@@ -2438,7 +2496,11 @@ app.get('/advanced.html', async function(req, res) {
     let exclude_teams = 'ath,atl'
     body += '<p><span class="tooltip">Exclude a team<span class="tooltiptext">Excluding a team (MLB only, by abbreviation, in a comma-separated list if more than 1) will exclude every game involving that team. Note that blackouts are already excluded without the need to specify this parameter.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&excludeTeams=' + exclude_teams + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&excludeTeams=' + exclude_teams + content_protect_b + '">xml</a> and <a href="' + http_root + '/calendar.ics?mediaType=' + mediaType + '&excludeTeams=' + exclude_teams + content_protect_b + '">ics</a></p>' + "\n"
 
-    body += '<p><span class="tooltip">Include (or exclude) LIDOM<span class="tooltiptext">Dominican Winter League, aka Liga de Beisbol Dominicano. Live stream only, does not support starting from the beginning or certain innings, skip options, etc.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&includeTeams=lidom' + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&includeTeams=lidom' + content_protect_b + '">xml</a> and <a href="' + http_root + '/calendar.ics?mediaType=' + mediaType + '&includeTeams=lidom' + content_protect_b + '">ics</a></p>' + "\n"
+    body += '<p><span class="tooltip">Include (or exclude) Winter Leagues<span class="tooltiptext">Winter leagues include the Arizona Fall League, Dominican Winter League aka Liga de Beisbol Dominicano, and Mexican Winter League aka Liga Mexicana del Pacífico. Live stream only, does not support starting from the beginning or certain innings, skip options, etc.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&includeTeams=winter' + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&includeTeams=winter' + content_protect_b + '">xml</a> and <a href="' + http_root + '/calendar.ics?mediaType=' + mediaType + '&includeTeams=winter' + content_protect_b + '">ics</a></p>' + "\n"
+
+    if ( entitlements.includes('MASN_110') ) {
+      body += '<p><span class="tooltip">Include (or exclude) MASN<span class="tooltiptext">MASN live stream for entitled subscribers. <a href="https://support.mlb.com/s/article/MASN-In-Market-Offering">See here for more information</a>.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&includeTeams=masn' + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&includeTeams=masn' + content_protect_b + '">xml</a></p>' + "\n"
+    }
 
     if ( entitlements.includes('MLBN') || entitlements.includes('EXECMLB') || entitlements.includes('MLBTVMLBNADOBEPASS') ) {
       body += '<p><span class="tooltip">Include (or exclude) MLB Network<span class="tooltiptext">MLB Network live stream is now available in the USA for paid MLBTV subscribers or as a paid add-on, in addition to authenticated TV subscribers. <a href="https://support.mlb.com/s/article/MLB-Network-Streaming-FAQ">See here for more information</a>.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&includeTeams=mlbn' + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&includeTeams=mlbn' + content_protect_b + '">xml</a></p>' + "\n"
@@ -2449,7 +2511,7 @@ app.get('/advanced.html', async function(req, res) {
     }
 
     if ( entitlements.includes('SNY_121') ) {
-      body += '<p><span class="tooltip">Include (or exclude) SNY<span class="tooltiptext">SNY live stream for entitled subscribers. <a href="https://support.mlb.com/s/article/SNLA-Plus-Subscription-Packages">See here for more information</a>.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&includeTeams=sny' + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&includeTeams=sny' + content_protect_b + '">xml</a></p>' + "\n"
+      body += '<p><span class="tooltip">Include (or exclude) SNY<span class="tooltiptext">SNY live stream for entitled subscribers. <a href="https://support.mlb.com/s/article/SNY-In-Market-Offering">See here for more information</a>.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&includeTeams=sny' + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&includeTeams=sny' + content_protect_b + '">xml</a></p>' + "\n"
     }
 
     body += '<p><span class="tooltip">Include (or exclude) Big Inning<span class="tooltiptext">Big Inning is the live look-in and highlights show. <a href="https://www.mlb.com/live-stream-games/big-inning">See here for more information</a>.</span></span>: <a href="' + http_root + '/channels.m3u?mediaType=' + mediaType + '&resolution=' + resolution + '&includeTeams=biginning' + content_protect_b + '">m3u</a> and <a href="' + http_root + '/guide.xml?mediaType=' + mediaType + '&includeTeams=biginning' + content_protect_b + '">xml</a> and <a href="' + http_root + '/calendar.ics?mediaType=' + mediaType + '&includeTeams=biginning' + content_protect_b + '">ics</a></p>' + "\n"
